@@ -1,25 +1,28 @@
 package org.gitlab4j.api;
 
-import org.gitlab4j.api.GitLabApi.ApiVersion;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assume.assumeTrue;
+
+import java.text.ParseException;
+import java.util.Date;
+import java.util.List;
+
+import javax.ws.rs.core.Response;
+
 import org.gitlab4j.api.models.Comment;
 import org.gitlab4j.api.models.Commit;
 import org.gitlab4j.api.models.CommitRef;
 import org.gitlab4j.api.models.Diff;
 import org.gitlab4j.api.models.Project;
+import org.gitlab4j.api.utils.ISO8601;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.FixMethodOrder;
 import org.junit.Test;
+import org.junit.experimental.categories.Category;
 import org.junit.runners.MethodSorters;
-
-import javax.ws.rs.core.Response;
-import java.util.Date;
-import java.util.List;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeTrue;
 
 /**
 * In order for these tests to run you must set the following properties in test-gitlab4j.properties
@@ -31,21 +34,11 @@ import static org.junit.Assume.assumeTrue;
  * 
  * If any of the above are NULL, all tests in this class will be skipped.
  */
+@Category(IntegrationTest.class)
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
-public class TestCommitsApi {
+public class TestCommitsApi extends AbstractIntegrationTest {
 
-    // The following needs to be set to your test repository
-    private static final String TEST_PROJECT_NAME;
-    private static final String TEST_NAMESPACE;
-    private static final String TEST_HOST_URL;
-    private static final String TEST_PRIVATE_TOKEN;
     private static final String TEST_PROJECT_SUBDIRECTORY_PATH = "src/main/docs/test-project.txt";
-    static {
-        TEST_NAMESPACE = TestUtils.getProperty("TEST_NAMESPACE");
-        TEST_PROJECT_NAME = TestUtils.getProperty("TEST_PROJECT_NAME");
-        TEST_HOST_URL = TestUtils.getProperty("TEST_HOST_URL");
-        TEST_PRIVATE_TOKEN = TestUtils.getProperty("TEST_PRIVATE_TOKEN");
-    }
 
     private static GitLabApi gitLabApi;
     private static Project testProject;
@@ -56,36 +49,9 @@ public class TestCommitsApi {
 
     @BeforeClass
     public static void setup() {
-
-        String problems = "";
-        if (TEST_NAMESPACE == null || TEST_NAMESPACE.trim().isEmpty()) {
-            problems += "TEST_NAMESPACE cannot be empty\n";
-        }
-
-        if (TEST_PROJECT_NAME == null || TEST_PROJECT_NAME.trim().isEmpty()) {
-            problems += "TEST_PROJECT_NAME cannot be empty\n";
-        }
-
-        if (TEST_HOST_URL == null || TEST_HOST_URL.trim().isEmpty()) {
-            problems += "TEST_HOST_URL cannot be empty\n";
-        }
-
-        if (TEST_PRIVATE_TOKEN == null || TEST_PRIVATE_TOKEN.trim().isEmpty()) {
-            problems += "TEST_PRIVATE_TOKEN cannot be empty\n";
-        }
-
-        if (problems.isEmpty()) {
-            gitLabApi = new GitLabApi(ApiVersion.V4, TEST_HOST_URL, TEST_PRIVATE_TOKEN);
-
-            try {
-                testProject = gitLabApi.getProjectApi().getProject(TEST_NAMESPACE, TEST_PROJECT_NAME);
-            } catch (GitLabApiException gle) {
-                System.err.print(gle.getMessage());
-            }
-
-        } else {
-            System.err.print(problems);
-        }
+        // Must setup the connection to the GitLab test server and get the test Project instance
+        gitLabApi = baseTestSetup();
+        testProject = getTestProject();
     }
 
     @Before
@@ -112,11 +78,11 @@ public class TestCommitsApi {
     }
 
     @Test
-    public void testComments() throws GitLabApiException {
+    public void testComments() throws GitLabApiException, ParseException {
 
         assertNotNull(testProject);
 
-        List<Commit> commits = gitLabApi.getCommitsApi().getCommits(testProject.getId(), null, new Date(0), new Date());
+        List<Commit> commits = gitLabApi.getCommitsApi().getCommits(testProject.getId(), null, ISO8601.toDate("2000-01-01"), new Date());
         assertNotNull(commits);
         assertTrue(commits.size() > 0);
 
@@ -131,19 +97,20 @@ public class TestCommitsApi {
     }
 
     @Test
-    public void testCommitsSince() throws GitLabApiException {
+    public void testCommitsSince() throws GitLabApiException, ParseException {
 
         assertNotNull(testProject);
+        Date since = ISO8601.toDate("2000-01-01");
 
         List<Commit> commits = gitLabApi.getCommitsApi().getCommits(testProject.getId(), null, new Date(), null);
         assertNotNull(commits);
         assertTrue(commits.isEmpty());
 
-        commits = gitLabApi.getCommitsApi().getCommits(testProject.getId(), null, new Date(0), new Date());
+        commits = gitLabApi.getCommitsApi().getCommits(testProject.getId(), null, since, new Date());
         assertNotNull(commits);
         assertTrue(commits.size() > 0);
 
-        commits = gitLabApi.getCommitsApi().getCommits(testProject.getId(), null, new Date(0), new Date(), 1, 10);
+        commits = gitLabApi.getCommitsApi().getCommits(testProject.getId(), null, since, new Date(), 1, 10);
         assertNotNull(commits);
         assertTrue(commits.size() > 0);
 
@@ -151,7 +118,7 @@ public class TestCommitsApi {
         assertNotNull(pager);
         assertTrue(pager.getTotalItems() == 0);
 
-        pager = gitLabApi.getCommitsApi().getCommits(testProject.getId(), null, new Date(0), null, 10);
+        pager = gitLabApi.getCommitsApi().getCommits(testProject.getId(), null, since, null, 10);
         assertNotNull(pager);
         assertTrue(pager.getTotalItems() > 0);
     }
@@ -170,12 +137,12 @@ public class TestCommitsApi {
     }
 
     @Test
-    public void testCommitsSinceWithPath() throws GitLabApiException {
+    public void testCommitsSinceWithPath() throws GitLabApiException, ParseException {
 
         assertNotNull(testProject);
 
         List<Commit> commits = gitLabApi.getCommitsApi().getCommits(
-                testProject.getId(), null, new Date(0), new Date(), TEST_PROJECT_SUBDIRECTORY_PATH);
+                testProject.getId(), null, ISO8601.toDate("2000-01-01"), new Date(), TEST_PROJECT_SUBDIRECTORY_PATH);
         assertNotNull(commits);
         assertTrue(commits.size() > 0);
     }
@@ -186,20 +153,20 @@ public class TestCommitsApi {
         assertNotNull(testProject);
 
         CommitsApi commitsApi = gitLabApi.getCommitsApi();
-        List<Commit> commits = commitsApi.getCommits(testProject.getId(), "master", null);
+        List<Commit> commits = commitsApi.getCommits(testProject, "master", null);
         assertNotNull(commits);
         assertTrue(commits.size() > 0);
 
-        commits = commitsApi.getCommits(testProject.getId(), "master", "README");
+        commits = commitsApi.getCommits(testProject, "master", "README");
         assertNotNull(commits);
         assertTrue(commits.size() > 0);
 
         commitsApi = gitLabApi.getCommitsApi();
-        commits = commitsApi.getCommits(testProject.getId(), "master", "README.md");
+        commits = commitsApi.getCommits(testProject, "master", "README.md");
         assertNotNull(commits);
         assertTrue(commits.size() > 0);
 
-        commits = commitsApi.getCommits(testProject.getId(), "master", TEST_PROJECT_SUBDIRECTORY_PATH);
+        commits = commitsApi.getCommits(testProject, "master", TEST_PROJECT_SUBDIRECTORY_PATH);
         assertNotNull(commits);
         assertTrue(commits.size() > 0);
     }
@@ -207,10 +174,9 @@ public class TestCommitsApi {
     @Test
     public void testCommitsByPathNotFound() throws GitLabApiException {
 
-        Project project = gitLabApi.getProjectApi().getProject(TEST_NAMESPACE, TEST_PROJECT_NAME);
-
         try {
-            List<Commit> commits = gitLabApi.getCommitsApi().getCommits(project.getId(), "master", "this-file-does-not-exist.an-extension");
+            List<Commit> commits = gitLabApi.getCommitsApi().getCommits(
+                    testProject, "master", "this-file-does-not-exist.an-extension");
             assertTrue(commits == null || commits.isEmpty());
         } catch (GitLabApiException gle) {
             assertEquals(Response.Status.NOT_FOUND, gle.getHttpStatus());

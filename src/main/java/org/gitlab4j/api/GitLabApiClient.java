@@ -33,10 +33,11 @@ import javax.ws.rs.core.StreamingOutput;
 import org.gitlab4j.api.Constants.TokenType;
 import org.gitlab4j.api.GitLabApi.ApiVersion;
 import org.gitlab4j.api.utils.JacksonJson;
+import org.gitlab4j.api.utils.MaskingLoggingFilter;
 import org.glassfish.jersey.apache.connector.ApacheConnectorProvider;
 import org.glassfish.jersey.client.ClientConfig;
 import org.glassfish.jersey.client.ClientProperties;
-import org.glassfish.jersey.logging.LoggingFeature;
+import org.glassfish.jersey.client.JerseyClientBuilder;
 import org.glassfish.jersey.media.multipart.Boundary;
 import org.glassfish.jersey.media.multipart.FormDataMultiPart;
 import org.glassfish.jersey.media.multipart.MultiPart;
@@ -244,12 +245,15 @@ public class GitLabApiClient {
      *
      * @param logger the Logger instance to log to
      * @param level the logging level (SEVERE, WARNING, INFO, CONFIG, FINE, FINER, FINEST)
+     * @param maxEntitySize maximum number of entity bytes to be logged.  When logging if the maxEntitySize
+     * is reached, the entity logging  will be truncated at maxEntitySize and "...more..." will be added at
+     * the end of the log entry. If maxEntitySize is <= 0, entity logging will be disabled
+     * @param maskedHeaderNames a list of header names that should have the values masked
      */
-    void enableRequestResponseLogging(Logger logger, Level level) {
+    void enableRequestResponseLogging(Logger logger, Level level, int maxEntityLength, List<String> maskedHeaderNames) {
 
-        LoggingFeature loggingFeature = new LoggingFeature(
-            logger, level, LoggingFeature.Verbosity.PAYLOAD_TEXT, LoggingFeature.DEFAULT_MAX_ENTITY_SIZE);
-        clientConfig.register(loggingFeature);
+        MaskingLoggingFilter loggingFilter = new MaskingLoggingFilter(logger, level, maxEntityLength, maskedHeaderNames);
+        clientConfig.register(loggingFilter);
 
         // Recreate the Client instance if already created.
         if (apiClient != null) {
@@ -715,7 +719,9 @@ public class GitLabApiClient {
 
     protected Client createApiClient() {
 
-        ClientBuilder clientBuilder = ClientBuilder.newBuilder().withConfig(clientConfig);
+        // Explicitly use an instance of the JerseyClientBuilder, this allows this
+        // library to work when both Jersey and Resteasy are present
+        ClientBuilder clientBuilder = new JerseyClientBuilder().withConfig(clientConfig);
 
         if (ignoreCertificateErrors) {
             clientBuilder.sslContext(openSslContext).hostnameVerifier(openHostnameVerifier);
@@ -738,8 +744,8 @@ public class GitLabApiClient {
             }
         }
 
-        String authHeader = (tokenType == TokenType.ACCESS ? AUTHORIZATION_HEADER : PRIVATE_TOKEN_HEADER);
-        String authValue = (tokenType == TokenType.ACCESS ? "Bearer " + authToken : authToken);
+        String authHeader = (tokenType == TokenType.OAUTH2_ACCESS ? AUTHORIZATION_HEADER : PRIVATE_TOKEN_HEADER);
+        String authValue = (tokenType == TokenType.OAUTH2_ACCESS ? "Bearer " + authToken : authToken);
         Invocation.Builder builder = target.request();
         if (accept == null || accept.trim().length() == 0) {
             builder = builder.header(authHeader, authValue);
